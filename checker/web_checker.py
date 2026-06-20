@@ -7,30 +7,15 @@ from difflib import SequenceMatcher
 from ddgs import DDGS
 from rapidfuzz import fuzz
 
-from checker.models import SourceMatch
-from checker.text_normalize import content_word_count, strip_citations
+from checker import models
+from checker.text_normalize import (
+    content_word_count,
+    is_reference_paragraph,
+    strip_citations,
+    strip_for_comparison,
+)
 
-
-COMMON_PHRASES = {
-    "business model canvas",
-    "artificial intelligence",
-    "entrepreneurship education",
-    "experiential learning",
-    "higher education",
-    "innovation capability",
-    "venture growth",
-    "economic growth",
-    "literature review",
-    "research methodology",
-    "statistical analysis",
-    "machine learning",
-    "deep learning",
-    "open source",
-    "peer review",
-}
-
-
-from checker.text_normalize import strip_citations, strip_for_comparison
+SourceMatch = models.SourceMatch
 
 
 def _clean(text: str) -> str:
@@ -101,7 +86,11 @@ def check_paragraph_against_web(
     text: str,
     max_results: int = 5,
     delay: float = 0.35,
-) -> list[SourceMatch]:
+    section: str = "",
+) -> list[models.SourceMatch]:
+    if is_reference_paragraph(text, section):
+        return []
+
     body_text = strip_citations(text)
     if content_word_count(text) < 6:
         return []
@@ -113,7 +102,7 @@ def check_paragraph_against_web(
     results = _search_web(query, max_results=max_results)
     time.sleep(delay)
 
-    matches: list[SourceMatch] = []
+    matches: list[models.SourceMatch] = []
     for item in results:
         body = item.get("body") or item.get("snippet") or ""
         title = item.get("title") or "Unknown source"
@@ -124,7 +113,7 @@ def check_paragraph_against_web(
         sim, matched = compare_texts(body_text, body)
         if sim >= 28:
             matches.append(
-                SourceMatch(
+                models.SourceMatch(
                     title=title[:200],
                     url=url,
                     snippet=body[:400],
@@ -137,10 +126,12 @@ def check_paragraph_against_web(
     return matches[:5]
 
 
-def check_sentence_matches(text: str, sources: list[SourceMatch]) -> list[SourceMatch]:
+def check_sentence_matches(
+    text: str, sources: list[models.SourceMatch]
+) -> list[models.SourceMatch]:
     body_text = strip_citations(text)
     sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z\"'])", body_text)
-    sentence_matches: list[SourceMatch] = []
+    sentence_matches: list[models.SourceMatch] = []
 
     for sent in sentences:
         if len(sent.strip()) < 30:
@@ -149,7 +140,7 @@ def check_sentence_matches(text: str, sources: list[SourceMatch]) -> list[Source
             sim, matched = compare_texts(sent, src.snippet)
             if sim >= 55 and matched:
                 sentence_matches.append(
-                    SourceMatch(
+                    models.SourceMatch(
                         title=src.title,
                         url=src.url,
                         snippet=sent[:300],

@@ -64,6 +64,7 @@ def analyze_document(
             strip_citations(para.text),
             max_results=cfg["max_results"],
             delay=cfg["delay"],
+            section=para.section,
         )
 
         internal = detect_internal_overlap(all_texts, strip_citations(para.text))

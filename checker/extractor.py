@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 from docx import Document
 
+from checker.text_normalize import is_reference_paragraph
+
 
 @dataclass
 class ExtractedParagraph:
@@ -20,7 +22,8 @@ SECTION_PATTERNS = [
     (re.compile(r"^index terms", re.I), "Index Terms"),
     (re.compile(r"^keywords", re.I), "Index Terms"),
     (re.compile(r"^introduction$", re.I), "Introduction"),
-    (re.compile(r"^references$", re.I), "References"),
+    (re.compile(r"^references\s*$", re.I), "References"),
+    (re.compile(r"^bibliography\s*$", re.I), "References"),
     (re.compile(r"^acknowledgment", re.I), "Acknowledgments"),
     (re.compile(r"^conclusion", re.I), "Conclusion"),
     (re.compile(r"^methodology", re.I), "Methodology"),
@@ -46,9 +49,6 @@ def _detect_section(text: str, current: str) -> str:
     if re.match(r"^\d+(\.\d+)*\.?\s+[A-Z]", stripped) and len(stripped) < 80:
         return stripped.split(".", 1)[-1].strip()[:60] or "Section"
     return current
-
-
-from checker.text_normalize import is_reference_paragraph
 
 
 def _should_skip(text: str, section: str) -> tuple[bool, str]:
@@ -77,6 +77,7 @@ def _should_skip(text: str, section: str) -> tuple[bool, str]:
 def extract_paragraphs(path: str) -> list[ExtractedParagraph]:
     doc = Document(path)
     current_section = "Header"
+    in_references = False
     results: list[ExtractedParagraph] = []
 
     for idx, para in enumerate(doc.paragraphs):
@@ -84,6 +85,11 @@ def extract_paragraphs(path: str) -> list[ExtractedParagraph]:
         if not text:
             continue
         current_section = _detect_section(text, current_section)
+        if re.match(r"^references\s*$", text, re.I):
+            in_references = True
+            current_section = "References"
+        if in_references:
+            current_section = "References"
         skip, reason = _should_skip(text, current_section)
         results.append(
             ExtractedParagraph(

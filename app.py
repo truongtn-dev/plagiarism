@@ -408,7 +408,7 @@ def main():
                 | **High** (55–74%) | Likely substantial overlap | Rewrite paragraph; add IEEE citation |
                 | **Critical** (≥ 75%) | Strong match with web sources | Full paraphrase required |
 
-                **Excluded from matching:** inline citations `[1]`, `[2,3]`, entire **References** section, and bibliography entries.
+                **Excluded from matching:** inline citations `[1]`, `[2,3]`, **References** section, and IEEE bibliography lines (author, vol., pp., doi — with or without `[n]` prefix).
                 """
             )
     elif not run_scan:
