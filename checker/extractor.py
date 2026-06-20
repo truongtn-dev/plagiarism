@@ -48,8 +48,15 @@ def _detect_section(text: str, current: str) -> str:
     return current
 
 
-def _should_skip(text: str) -> tuple[bool, str]:
+from checker.text_normalize import is_reference_paragraph
+
+
+def _should_skip(text: str, section: str) -> tuple[bool, str]:
     stripped = text.strip()
+    if section == "References":
+        return True, "References section (bibliography — excluded from plagiarism check)"
+    if is_reference_paragraph(stripped, section):
+        return True, "Bibliography entry (excluded from plagiarism check)"
     if len(stripped) < 40:
         return True, "Quá ngắn (< 40 ký tự)"
     if EMAIL_RE.search(stripped):
@@ -57,7 +64,7 @@ def _should_skip(text: str) -> tuple[bool, str]:
     if CITATION_ONLY_RE.match(stripped):
         return True, "Chỉ chứa trích dẫn số"
     if re.match(r"^\[\d+\]\s", stripped):
-        return True, "Mục References (trích dẫn chuẩn IEEE)"
+        return True, "Bibliography entry (excluded from plagiarism check)"
     if re.fullmatch(r"[\w\s,.-]+", stripped) and "@" in stripped and len(stripped) < 120:
         return True, "Khối thông tin tác giả"
     if stripped.count("\n") >= 2 and len(stripped) < 150:
@@ -77,7 +84,7 @@ def extract_paragraphs(path: str) -> list[ExtractedParagraph]:
         if not text:
             continue
         current_section = _detect_section(text, current_section)
-        skip, reason = _should_skip(text)
+        skip, reason = _should_skip(text, current_section)
         results.append(
             ExtractedParagraph(
                 index=idx + 1,

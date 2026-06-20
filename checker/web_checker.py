@@ -7,7 +7,7 @@ from difflib import SequenceMatcher
 from ddgs import DDGS
 from rapidfuzz import fuzz
 
-from checker.models import SourceMatch
+from checker.text_normalize import content_word_count, strip_citations
 
 
 COMMON_PHRASES = {
@@ -29,14 +29,17 @@ COMMON_PHRASES = {
 }
 
 
+from checker.text_normalize import strip_citations, strip_for_comparison
+
+
 def _clean(text: str) -> str:
-    text = re.sub(r"\[\d+\]", "", text)
+    text = strip_for_comparison(text)
     text = re.sub(r"[^\w\s'-]", " ", text.lower())
     return re.sub(r"\s+", " ", text).strip()
 
 
 def _extract_search_query(text: str, max_len: int = 120) -> str:
-    cleaned = re.sub(r"\[\d+\]", "", text)
+    cleaned = strip_citations(text)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     sentences = re.split(r"(?<=[.!?])\s+", cleaned)
     best = max(sentences, key=len) if sentences else cleaned
@@ -75,9 +78,13 @@ def _longest_common_substring(a: str, b: str, min_len: int = 25) -> str:
 
 
 def compare_texts(source: str, target: str) -> tuple[float, str]:
-    src = _clean(source)
-    tgt = _clean(target)
+    src_stripped = strip_citations(source)
+    tgt_stripped = strip_citations(target)
+    src = _clean(src_stripped)
+    tgt = _clean(tgt_stripped)
     if not src or not tgt:
+        return 0.0, ""
+    if len(src.split()) < 4 or len(tgt.split()) < 4:
         return 0.0, ""
 
     token_score = fuzz.token_set_ratio(src, tgt)
@@ -85,7 +92,7 @@ def compare_texts(source: str, target: str) -> tuple[float, str]:
     ratio_score = fuzz.ratio(src[:2000], tgt[:2000])
 
     score = max(token_score, partial_score * 0.85, ratio_score * 0.9)
-    matched = _longest_common_substring(source, target)
+    matched = _longest_common_substring(src_stripped, tgt_stripped)
     return round(min(score, 100.0), 1), matched
 
 
@@ -94,7 +101,11 @@ def check_paragraph_against_web(
     max_results: int = 5,
     delay: float = 0.35,
 ) -> list[SourceMatch]:
-    query = _extract_search_query(text)
+    body_text = strip_citations(text)
+    if content_word_count(text) < 6:
+        return []
+
+    query = _extract_search_query(body_text)
     if len(query.split()) < 6:
         return []
 
@@ -109,7 +120,7 @@ def check_paragraph_against_web(
         if not body:
             continue
 
-        sim, matched = compare_texts(text, body)
+        sim, matched = compare_texts(body_text, body)
         if sim >= 28:
             matches.append(
                 SourceMatch(
@@ -126,7 +137,8 @@ def check_paragraph_against_web(
 
 
 def check_sentence_matches(text: str, sources: list[SourceMatch]) -> list[SourceMatch]:
-    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z\"'])", text)
+    body_text = strip_citations(text)
+    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z\"'])", body_text)
     sentence_matches: list[SourceMatch] = []
 
     for sent in sentences:

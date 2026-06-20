@@ -73,7 +73,9 @@ def build_suggestions(
     suggestions: list[str] = []
 
     if not web_matches and not internal_duplicates:
-        suggestions.append("✓ Không phát hiện trùng lặp đáng kể với nguồn web công khai.")
+        suggestions.append(
+            "✓ No significant overlap with public web sources (citations [n] excluded from matching)."
+        )
         return suggestions
 
     if web_matches:

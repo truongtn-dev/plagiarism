@@ -5,7 +5,7 @@ Kiểm tra đạo văn toàn diện cho bài báo khoa học (.docx)
 
 from __future__ import annotations
 
-import io
+import html
 import json
 import tempfile
 from pathlib import Path
@@ -17,179 +17,17 @@ from checker.export_docx import COPYRIGHT, export_report_docx
 from checker.extractor import extract_paragraphs
 from checker.fix_docx import generate_fixed_docx
 from checker.models import RiskLevel
+from ui.icons import icon_label, svg_icon
+from ui.theme import CUSTOM_CSS, hero_html, section_heading, sidebar_brand_html
 
-# ── Page config ──────────────────────────────────────────────────────────────
+_ICON = Path(__file__).parent / "assets" / "icon.svg"
+
 st.set_page_config(
     page_title="IEEE Plagiarism Checker",
-    page_icon="🔍",
+    page_icon=str(_ICON) if _ICON.exists() else None,
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-CUSTOM_CSS = """
-<style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
-
-:root {
-    --bg: #0f1419;
-    --surface: #1a2332;
-    --surface2: #243044;
-    --border: #2d3a4f;
-    --text: #e8edf4;
-    --muted: #8b9cb3;
-    --accent: #3b82f6;
-    --accent-glow: rgba(59, 130, 246, 0.25);
-    --success: #22c55e;
-    --warning: #f59e0b;
-    --danger: #ef4444;
-    --critical: #dc2626;
-}
-
-.stApp {
-    background: linear-gradient(160deg, #0a0e14 0%, #0f1419 40%, #121820 100%);
-    font-family: 'DM Sans', sans-serif;
-    color: var(--text);
-}
-
-header[data-testid="stHeader"] { background: transparent; }
-
-.main-header {
-    text-align: center;
-    padding: 2rem 0 1.5rem;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 2rem;
-}
-.main-header h1 {
-    font-size: 2.2rem;
-    font-weight: 700;
-    background: linear-gradient(135deg, #60a5fa, #a78bfa);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin-bottom: 0.4rem;
-}
-.main-header p {
-    color: var(--muted);
-    font-size: 1.05rem;
-}
-
-.score-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 1.5rem;
-    text-align: center;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
-    transition: transform 0.2s;
-}
-.score-card:hover { transform: translateY(-2px); }
-.score-value {
-    font-size: 3rem;
-    font-weight: 700;
-    font-family: 'JetBrains Mono', monospace;
-    line-height: 1;
-}
-.score-label {
-    color: var(--muted);
-    font-size: 0.9rem;
-    margin-top: 0.5rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-}
-
-.gauge-originality { color: var(--success); }
-.gauge-plagiarism { color: var(--danger); }
-.gauge-analyzed { color: var(--accent); }
-.gauge-time { color: #a78bfa; }
-
-.risk-badge {
-    display: inline-block;
-    padding: 0.25rem 0.75rem;
-    border-radius: 999px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-.risk-low { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
-.risk-medium { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
-.risk-high { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
-.risk-critical { background: rgba(220,38,38,0.2); color: #fca5a5; border: 1px solid rgba(220,38,38,0.4); }
-
-.para-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-left: 4px solid var(--accent);
-    border-radius: 12px;
-    padding: 1.25rem 1.5rem;
-    margin-bottom: 1rem;
-}
-.para-card.risk-medium { border-left-color: var(--warning); }
-.para-card.risk-high { border-left-color: var(--danger); }
-.para-card.risk-critical { border-left-color: var(--critical); }
-.para-card.risk-low { border-left-color: var(--success); }
-
-.para-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-    align-items: center;
-    margin-bottom: 0.75rem;
-    font-size: 0.85rem;
-    color: var(--muted);
-}
-.para-text {
-    font-size: 0.95rem;
-    line-height: 1.65;
-    color: #c9d6e8;
-    margin: 0.75rem 0;
-    padding: 1rem;
-    background: var(--surface2);
-    border-radius: 8px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.82rem;
-    max-height: 200px;
-    overflow-y: auto;
-}
-.suggestion {
-    background: rgba(59,130,246,0.08);
-    border-left: 3px solid var(--accent);
-    padding: 0.6rem 1rem;
-    margin: 0.4rem 0;
-    border-radius: 0 8px 8px 0;
-    font-size: 0.88rem;
-    line-height: 1.5;
-}
-.source-link {
-    color: #60a5fa;
-    font-size: 0.85rem;
-    word-break: break-all;
-}
-
-div[data-testid="stSidebar"] {
-    background: var(--surface);
-    border-right: 1px solid var(--border);
-}
-.stButton > button {
-    background: linear-gradient(135deg, #3b82f6, #6366f1);
-    color: white;
-    border: none;
-    border-radius: 10px;
-    padding: 0.65rem 1.5rem;
-    font-weight: 600;
-    width: 100%;
-    transition: box-shadow 0.2s;
-}
-.stButton > button:hover {
-    box-shadow: 0 0 20px var(--accent-glow);
-}
-
-.stProgress > div > div {
-    background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-}
-
-.filter-pills { margin: 1rem 0; }
-</style>
-"""
 
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
@@ -197,23 +35,21 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 def risk_badge(risk: RiskLevel) -> str:
     cls = f"risk-{risk.value}"
     labels = {
-        RiskLevel.LOW: "An toàn",
-        RiskLevel.MEDIUM: "Theo dõi",
-        RiskLevel.HIGH: "Cao",
-        RiskLevel.CRITICAL: "Nghiêm trọng",
+        RiskLevel.LOW: "Safe",
+        RiskLevel.MEDIUM: "Review",
+        RiskLevel.HIGH: "High",
+        RiskLevel.CRITICAL: "Critical",
     }
     return f'<span class="risk-badge {cls}">{labels.get(risk, risk.value)}</span>'
 
 
 def render_header():
     st.markdown(
-        f"""
-        <div class="main-header">
-            <h1>🔍 IEEE Plagiarism Checker</h1>
-            <p>Kiểm tra đạo văn toàn diện · So khớp web · Phát hiện trùng lặp · Gợi ý paraphrase cho bài IEEE</p>
-            <p style="font-size:0.85rem;color:#64748b;margin-top:0.75rem;font-style:italic;">© {COPYRIGHT}</p>
-        </div>
-        """,
+        hero_html(
+            "Comprehensive plagiarism analysis for IEEE papers — web matching, "
+            "duplicate detection, paraphrase suggestions, and Mendeley-safe auto-fix.",
+            COPYRIGHT,
+        ),
         unsafe_allow_html=True,
     )
 
@@ -221,17 +57,20 @@ def render_header():
 def render_score_cards(report):
     cols = st.columns(4)
     cards = [
-        ("gauge-originality", f"{report.originality_percent}%", "Độ nguyên bản"),
-        ("gauge-plagiarism", f"{report.plagiarism_percent}%", "Đạo văn ước tính"),
-        ("gauge-analyzed", str(report.analyzed_paragraphs), "Đoạn đã quét"),
-        ("gauge-time", f"{report.duration_seconds}s", "Thời gian quét"),
+        ("shield", "icon-success", "gauge-originality", f"{report.originality_percent}%", "Originality"),
+        ("percent", "icon-danger", "gauge-plagiarism", f"{report.plagiarism_percent}%", "Plagiarism est."),
+        ("layers", "icon-accent", "gauge-analyzed", str(report.analyzed_paragraphs), "Paragraphs scanned"),
+        ("clock", "icon-purple", "gauge-time", f"{report.duration_seconds}s", "Scan duration"),
     ]
-    for col, (css, val, label) in zip(cols, cards):
+    for col, (icon_name, icon_cls, val_cls, val, label) in zip(cols, cards):
         with col:
             st.markdown(
                 f"""
                 <div class="score-card">
-                    <div class="score-value {css}">{val}</div>
+                    <div class="score-card-top">
+                        <div class="score-icon {icon_cls}">{svg_icon(icon_name, 20)}</div>
+                    </div>
+                    <div class="score-value {val_cls}">{val}</div>
                     <div class="score-label">{label}</div>
                 </div>
                 """,
@@ -240,15 +79,15 @@ def render_score_cards(report):
 
 
 def render_risk_summary(report):
-    st.subheader("📊 Phân bố mức rủi ro")
+    st.markdown(section_heading("chart", "Risk distribution"), unsafe_allow_html=True)
     cols = st.columns(4)
     levels = [
-        (RiskLevel.LOW, "An toàn", "#22c55e"),
-        (RiskLevel.MEDIUM, "Theo dõi", "#f59e0b"),
-        (RiskLevel.HIGH, "Cao", "#ef4444"),
-        (RiskLevel.CRITICAL, "Nghiêm trọng", "#dc2626"),
+        (RiskLevel.LOW, "Safe"),
+        (RiskLevel.MEDIUM, "Review"),
+        (RiskLevel.HIGH, "High"),
+        (RiskLevel.CRITICAL, "Critical"),
     ]
-    for col, (level, label, color) in zip(cols, levels):
+    for col, (level, label) in zip(cols, levels):
         count = report.risk_summary.get(level.value, 0)
         with col:
             st.metric(label, count)
@@ -261,53 +100,65 @@ def render_paragraph(p: "ParagraphResult", show_all: bool = False):
 
     risk_cls = f"risk-{p.risk.value}"
     sim_color = (
-        "#22c55e"
+        "#059669"
         if p.similarity < 38
-        else "#f59e0b"
+        else "#d97706"
         if p.similarity < 55
-        else "#ef4444"
-        if p.similarity < 75
         else "#dc2626"
+        if p.similarity < 75
+        else "#b91c1c"
+    )
+    safe_text = html.escape(p.text[:1200]) + ("…" if len(p.text) > 1200 else "")
+
+    st.markdown(
+        f"""
+        <div class="para-card {risk_cls}">
+            <div class="para-meta">
+                <strong>Paragraph #{p.index}</strong>
+                <span>{html.escape(p.section)}</span>
+                <span>{p.word_count} words</span>
+                <span style="color:{sim_color}; font-weight:600;">{p.similarity}% match</span>
+                {risk_badge(p.risk)}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    with st.container():
-        st.markdown(
-            f"""
-            <div class="para-card {risk_cls}">
-                <div class="para-meta">
-                    <strong>Đoạn #{p.index}</strong>
-                    <span>· {p.section}</span>
-                    <span>· {p.word_count} từ</span>
-                    <span style="color:{sim_color}; font-weight:600;">{p.similarity}% trùng khớp</span>
-                    {risk_badge(p.risk)}
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    with st.expander(
+        f"Details — Paragraph #{p.index} · {p.section}",
+        expanded=p.risk in (RiskLevel.HIGH, RiskLevel.CRITICAL),
+    ):
+        st.markdown(f'<div class="para-text">{safe_text}</div>', unsafe_allow_html=True)
 
-        with st.expander(f"Xem chi tiết đoạn #{p.index} — {p.section}", expanded=p.risk in (RiskLevel.HIGH, RiskLevel.CRITICAL)):
-            st.markdown(f'<div class="para-text">{p.text[:1200]}{"…" if len(p.text)>1200 else ""}</div>', unsafe_allow_html=True)
+        if p.sources:
+            st.markdown(
+                f"**{icon_label('link', 'Potential matching sources', 16)}**",
+                unsafe_allow_html=True,
+            )
+            for src in p.sources[:3]:
+                st.markdown(
+                    f"- **{html.escape(src.title)}** ({src.similarity}%)  \n"
+                    f"  <span class='source-link'>{html.escape(src.url or 'N/A')}</span>  \n"
+                    f"  _{html.escape(src.snippet[:200])}…_",
+                    unsafe_allow_html=True,
+                )
+                if src.matched_text:
+                    st.code(src.matched_text[:250], language=None)
 
-            if p.sources:
-                st.markdown("**🔗 Nguồn trùng khớp tiềm ẩn:**")
-                for src in p.sources[:3]:
-                    st.markdown(
-                        f"- **{src.title}** ({src.similarity}%)  \n"
-                        f"  <span class='source-link'>{src.url or 'N/A'}</span>  \n"
-                        f"  _{src.snippet[:200]}…_",
-                        unsafe_allow_html=True,
-                    )
-                    if src.matched_text:
-                        st.code(src.matched_text[:250], language=None)
+        if p.internal_duplicates:
+            st.warning("Internal duplication: " + "; ".join(p.internal_duplicates[:2]))
 
-            if p.internal_duplicates:
-                st.warning("Trùng lặp nội bộ: " + "; ".join(p.internal_duplicates[:2]))
-
-            if p.suggestions:
-                st.markdown("**💡 Gợi ý sửa đổi:**")
-                for s in p.suggestions:
-                    st.markdown(f'<div class="suggestion">{s}</div>', unsafe_allow_html=True)
+        if p.suggestions:
+            st.markdown(
+                f"**{icon_label('sparkles', 'Revision suggestions', 16)}**",
+                unsafe_allow_html=True,
+            )
+            for s in p.suggestions:
+                st.markdown(
+                    f'<div class="suggestion">{html.escape(s)}</div>',
+                    unsafe_allow_html=True,
+                )
 
 
 def export_report_json(report) -> bytes:
@@ -338,43 +189,73 @@ def export_report_json(report) -> bytes:
     return json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
 
 
+def render_getting_started():
+    st.markdown(section_heading("info", "Getting started"), unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="steps-grid">
+            <div class="step-card">
+                <div class="step-num">1</div>
+                <h4>Upload document</h4>
+                <p>Upload your <code>.docx</code> file in the sidebar, or use the default file if present.</p>
+            </div>
+            <div class="step-card">
+                <div class="step-num">2</div>
+                <h4>Configure scan</h4>
+                <p>Choose scan depth and risk filter, then run the plagiarism analysis.</p>
+            </div>
+            <div class="step-card">
+                <div class="step-num">3</div>
+                <h4>Review & export</h4>
+                <p>Download Word/JSON reports or auto-fix flagged sections while preserving Mendeley citations.</p>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def main():
     render_header()
 
     with st.sidebar:
-        st.header("⚙️ Cấu hình quét")
+        st.markdown(sidebar_brand_html(), unsafe_allow_html=True)
+        st.markdown(
+            f"**{icon_label('settings', 'Scan configuration', 16)}**",
+            unsafe_allow_html=True,
+        )
         default_path = Path(__file__).parent / "HTTL-NEW.docx"
-        uploaded = st.file_uploader("Tải file .docx", type=["docx"])
+        uploaded = st.file_uploader("Upload .docx file", type=["docx"])
         scan_mode = st.selectbox(
-            "Chế độ quét",
+            "Scan mode",
             ["quick", "standard", "thorough"],
             index=1,
             format_func=lambda x: {
-                "quick": "⚡ Nhanh (~2 phút)",
-                "standard": "🔍 Chuẩn (~5 phút)",
-                "thorough": "🔬 Kỹ lưỡng (~10 phút)",
+                "quick": "Quick (~2 min)",
+                "standard": "Standard (~5 min)",
+                "thorough": "Thorough (~10 min)",
             }[x],
         )
         min_risk = st.selectbox(
-            "Lọc hiển thị",
+            "Display filter",
             ["all", "medium+", "high+"],
             index=1,
             format_func=lambda x: {
-                "all": "Tất cả đoạn",
-                "medium+": "Theo dõi trở lên",
-                "high+": "Chỉ rủi ro cao",
+                "all": "All paragraphs",
+                "medium+": "Review and above",
+                "high+": "High risk only",
             }[x],
         )
-        run_scan = st.button("🚀 Bắt đầu kiểm tra đạo văn", type="primary")
+        run_scan = st.button("Start plagiarism scan", type="primary")
         auto_fix = st.button(
-            "✏️ Tự động sửa đạo văn",
-            help="Paraphrase nhẹ các đoạn rủi ro trung bình/cao. Giữ nguyên field citation Mendeley — không đụng [1],[2]…",
+            "Auto-fix plagiarism",
+            help="Light paraphrase for medium/high-risk paragraphs. Mendeley citation fields [1], [2]… are preserved.",
         )
 
         st.markdown("---")
         st.caption(
-            "Tool so khớp với nguồn web công khai (DuckDuckGo). "
-            "Kết quả mang tính tham khảo — nên dùng thêm Turnitin/iThenticate trước khi nộp IEEE."
+            "Matches against public web sources (DuckDuckGo). Results are indicative — "
+            "use Turnitin or iThenticate before IEEE submission."
         )
         st.caption(f"© {COPYRIGHT}")
 
@@ -398,7 +279,7 @@ def main():
         doc_path = str(default_path)
         filename = default_path.name
         st.session_state.doc_path = doc_path
-        st.info(f"📄 Sử dụng file mặc định: **{default_path.name}** (tải file khác ở sidebar)")
+        st.info(f"Using default file: **{default_path.name}** — upload another file in the sidebar.")
     else:
         st.session_state.doc_path = None
 
@@ -406,15 +287,15 @@ def main():
 
     if run_scan and doc_path:
         paragraphs = extract_paragraphs(doc_path)
-        progress = st.progress(0, text="Đang khởi tạo quét...")
+        progress = st.progress(0, text="Initializing scan…")
         status = st.empty()
 
         def on_progress(current, total, preview):
             pct = current / total
-            progress.progress(pct, text=f"Đang quét đoạn {current}/{total}...")
-            status.caption(f"▶ {preview}…")
+            progress.progress(pct, text=f"Scanning paragraph {current}/{total}…")
+            status.caption(f"{preview[:72]}…")
 
-        with st.spinner("Đang phân tích đạo văn — vui lòng chờ..."):
+        with st.spinner("Analyzing document — please wait…"):
             report = analyze_document(
                 paragraphs,
                 filename,
@@ -426,10 +307,12 @@ def main():
         st.session_state.fix_stats = None
         progress.empty()
         status.empty()
-        st.success(f"✅ Hoàn tất! Quét {report.analyzed_paragraphs} đoạn trong {report.duration_seconds}s")
+        st.success(
+            f"Scan complete — {report.analyzed_paragraphs} paragraphs analyzed in {report.duration_seconds}s."
+        )
 
     if auto_fix and st.session_state.report and st.session_state.doc_path:
-        with st.spinner("Đang paraphrase và giữ nguyên citation Mendeley..."):
+        with st.spinner("Paraphrasing while preserving Mendeley citations…"):
             fixed_bytes, stats = generate_fixed_docx(
                 st.session_state.doc_path,
                 st.session_state.report,
@@ -439,14 +322,16 @@ def main():
         st.session_state.fix_stats = stats
         failed = getattr(stats, "paragraphs_failed", 0)
         st.success(
-            f"✅ Đã sửa **{stats.paragraphs_modified}** đoạn · "
-            f"Giữ nguyên **{stats.paragraphs_unchanged}** đoạn · "
-            f"Bỏ qua/lỗi **{stats.paragraphs_skipped + failed}** đoạn"
+            f"Fixed **{stats.paragraphs_modified}** paragraphs · "
+            f"Unchanged **{stats.paragraphs_unchanged}** · "
+            f"Skipped/failed **{stats.paragraphs_skipped + failed}**"
         )
         if failed:
-            st.warning("Một số đoạn không sửa được để bảo vệ citation Mendeley — giữ nguyên bản gốc ở các đoạn đó.")
+            st.warning(
+                "Some paragraphs were skipped to protect Mendeley citations — original text kept."
+            )
     elif auto_fix and not st.session_state.report:
-        st.warning("Hãy chạy kiểm tra đạo văn trước khi tự động sửa.")
+        st.warning("Run a plagiarism scan before using auto-fix.")
 
     report = st.session_state.report
     if report:
@@ -456,30 +341,30 @@ def main():
 
         col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
         with col1:
-            st.subheader("📋 Kết quả chi tiết theo đoạn")
+            st.markdown(section_heading("list", "Detailed results"), unsafe_allow_html=True)
         with col2:
             if st.session_state.fixed_docx:
                 st.download_button(
-                    "✅ Tải bài đã sửa (.docx)",
+                    "Download fixed .docx",
                     data=st.session_state.fixed_docx,
                     file_name=f"fixed_{Path(report.filename).stem}.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    help="Văn bản màu đỏ = phần đã paraphrase; citation Mendeley giữ nguyên",
+                    help="Red text = paraphrased sections; Mendeley citations unchanged",
                     type="primary",
                 )
             else:
-                st.caption("Nhấn **Tự động sửa đạo văn** ở sidebar để tạo bản sửa")
+                st.caption("Use **Auto-fix plagiarism** in the sidebar to generate a revised document.")
         with col3:
             st.download_button(
-                "📄 Tải báo cáo Word",
+                "Download report (.docx)",
                 data=export_report_docx(report, min_risk=min_risk),
                 file_name=f"plagiarism_report_{Path(report.filename).stem}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                help="Xuất file .docx để đọc lỗi và gợi ý sửa song song với bài gốc",
+                help="Word report with errors and revision suggestions",
             )
         with col4:
             st.download_button(
-                "⬇️ JSON",
+                "Export JSON",
                 data=export_report_json(report),
                 file_name=f"plagiarism_report_{report.filename}.json",
                 mime="application/json",
@@ -488,9 +373,9 @@ def main():
         if st.session_state.fix_stats:
             fs = st.session_state.fix_stats
             st.info(
-                f"📝 **Bản sửa tự động:** {fs.paragraphs_modified} đoạn đã paraphrase "
-                f"(tô **đỏ** phần thay đổi). Citation Mendeley/IEEE `[n]` không bị thay đổi. "
-                f"Đoạn đã sửa: {', '.join(f'#{i}' for i in fs.modified_indices[:20])}"
+                f"**Auto-fixed document:** {fs.paragraphs_modified} paragraphs paraphrased "
+                f"(changes highlighted in **red**). Mendeley/IEEE citations `[n]` preserved. "
+                f"Modified: {', '.join(f'#{i}' for i in fs.modified_indices[:20])}"
                 f"{'…' if len(fs.modified_indices) > 20 else ''}"
             )
 
@@ -509,40 +394,26 @@ def main():
         flagged.sort(key=lambda p: (-p.similarity, p.index))
 
         if not flagged:
-            st.success("🎉 Không phát hiện đoạn văn có rủi ro đáng kể ở mức lọc hiện tại.")
+            st.success("No paragraphs with significant risk at the current filter level.")
         else:
             for p in flagged:
                 render_paragraph(p)
 
-        with st.expander("ℹ️ Cách đọc kết quả"):
+        with st.expander("How to read results"):
             st.markdown(
                 """
-                | Mức | Ý nghĩa | Hành động |
-                |-----|---------|-----------|
-                | **An toàn** (< 38%) | Thuật ngữ chung hoặc diễn đạt riêng | Giữ nguyên, đảm bảo citation |
-                | **Theo dõi** (38–54%) | Cụm từ tương tự nguồn công khai | Paraphrase nhẹ, kiểm tra trích dẫn |
-                | **Cao** (55–74%) | Khả năng copy ý lớn | Viết lại đoạn, thêm citation IEEE |
-                | **Nghiêm trọng** (≥ 75%) | Trùng lặp mạnh với nguồn web | Bắt buộc paraphrase toàn bộ |
+                | Level | Meaning | Action |
+                |-------|---------|--------|
+                | **Safe** (< 38%) | Common terminology or original phrasing | Keep; verify citations |
+                | **Review** (38–54%) | Similar phrases on public web | Light paraphrase; check citations |
+                | **High** (55–74%) | Likely substantial overlap | Rewrite paragraph; add IEEE citation |
+                | **Critical** (≥ 75%) | Strong match with web sources | Full paraphrase required |
 
-                **Công thức ước tính:** trọng số theo mức rủi ro × % trùng khớp với nguồn web / tổng số từ.
+                **Excluded from matching:** inline citations `[1]`, `[2,3]`, entire **References** section, and bibliography entries.
                 """
             )
     elif not run_scan:
-        st.markdown(
-            """
-            ### Bắt đầu
-            1. File **HTTL-NEW.docx** sẽ được dùng mặc định nếu có trong thư mục.
-            2. Chọn chế độ quét ở **sidebar** bên trái.
-            3. Nhấn **Bắt đầu kiểm tra đạo văn**.
-
-            Tool sẽ:
-            - Trích xuất toàn bộ đoạn văn từ `.docx`
-            - Tìm kiếm & so khớp với nguồn web công khai
-            - Phát hiện trùng lặp nội bộ trong bài
-            - Báo **% đạo văn ước tính** và gợi ý sửa từng đoạn
-            - **Tự động sửa đạo văn**: paraphrase, giữ Mendeley, tô đỏ phần đã sửa
-            """
-        )
+        render_getting_started()
 
 
 if __name__ == "__main__":

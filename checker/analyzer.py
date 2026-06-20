@@ -6,6 +6,7 @@ from collections import Counter
 from checker.extractor import ExtractedParagraph, split_sentences
 from checker.models import ParagraphResult, RiskLevel, ScanReport, SourceMatch
 from checker.suggestions import build_suggestions
+from checker.text_normalize import content_word_count, strip_citations
 from checker.web_checker import (
     check_paragraph_against_web,
     check_sentence_matches,
@@ -25,7 +26,7 @@ def _risk_level(similarity: float, has_internal: bool) -> RiskLevel:
 
 
 def _word_count(text: str) -> int:
-    return len(re.findall(r"\b\w+\b", text))
+    return content_word_count(text)
 
 
 def analyze_document(
@@ -41,8 +42,8 @@ def analyze_document(
     }
     cfg = mode_config.get(scan_mode, mode_config["standard"])
 
-    to_analyze = [p for p in paragraphs if not p.skip and len(p.text) >= cfg["min_chars"]]
-    all_texts = [p.text for p in paragraphs if not p.skip]
+    to_analyze = [p for p in paragraphs if not p.skip and len(strip_citations(p.text)) >= cfg["min_chars"]]
+    all_texts = [strip_citations(p.text) for p in paragraphs if not p.skip]
 
     results: list[ParagraphResult] = []
     total_words = sum(_word_count(p.text) for p in paragraphs if not p.skip)
@@ -60,12 +61,12 @@ def analyze_document(
             progress_callback(i + 1, len(to_analyze), para.text[:80])
 
         web_matches = check_paragraph_against_web(
-            para.text,
+            strip_citations(para.text),
             max_results=cfg["max_results"],
             delay=cfg["delay"],
         )
 
-        internal = detect_internal_overlap(all_texts, para.text)
+        internal = detect_internal_overlap(all_texts, strip_citations(para.text))
 
         best_sim = 0.0
         top_match: SourceMatch | None = None
@@ -75,7 +76,7 @@ def analyze_document(
 
         sentence_hits = []
         if web_matches and best_sim >= 40:
-            sentence_hits = check_sentence_matches(para.text, web_matches)
+            sentence_hits = check_sentence_matches(strip_citations(para.text), web_matches)
 
         if internal:
             best_sim = max(best_sim, 45.0)
