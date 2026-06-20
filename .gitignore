@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# User documents & reports (do not upload papers)
+*.docx
+*.doc
+report*.json
+fixed_*.docx
+plagiarism_report_*
+_test_*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
