@@ -58,7 +58,7 @@ def render_score_cards(report):
     cols = st.columns(4)
     cards = [
         ("shield", "icon-success", "gauge-originality", f"{report.originality_percent}%", "Originality"),
-        ("percent", "icon-danger", "gauge-plagiarism", f"{report.plagiarism_percent}%", "Plagiarism est."),
+        ("percent", "icon-danger", "gauge-plagiarism", f"{report.plagiarism_percent}%", "Similarity (coverage)"),
         ("layers", "icon-accent", "gauge-analyzed", str(report.analyzed_paragraphs), "Paragraphs scanned"),
         ("clock", "icon-purple", "gauge-time", f"{report.duration_seconds}s", "Scan duration"),
     ]
@@ -101,11 +101,11 @@ def render_paragraph(p: "ParagraphResult", show_all: bool = False):
     risk_cls = f"risk-{p.risk.value}"
     sim_color = (
         "#059669"
-        if p.similarity < 38
+        if p.similarity < 20
         else "#d97706"
-        if p.similarity < 55
+        if p.similarity < 35
         else "#dc2626"
-        if p.similarity < 75
+        if p.similarity < 60
         else "#b91c1c"
     )
     safe_text = html.escape(p.text[:1200]) + ("…" if len(p.text) > 1200 else "")
@@ -403,12 +403,14 @@ def main():
                 """
                 | Level | Meaning | Action |
                 |-------|---------|--------|
-                | **Safe** (< 38%) | Common terminology or original phrasing | Keep; verify citations |
-                | **Review** (38–54%) | Similar phrases on public web | Light paraphrase; check citations |
-                | **High** (55–74%) | Likely substantial overlap | Rewrite paragraph; add IEEE citation |
-                | **Critical** (≥ 75%) | Strong match with web sources | Full paraphrase required |
+                | **Safe** (< 20%) | Common terminology or original phrasing | Keep; verify citations |
+                | **Review** (20–34%) | Similar phrases on public web | Light paraphrase; check citations |
+                | **High** (35–59%) | Likely substantial overlap | Rewrite paragraph; add IEEE citation |
+                | **Critical** (≥ 60%) | Strong match with web sources | Full paraphrase required |
 
-                **Excluded from matching:** inline citations `[1]`, `[2,3]`, **References** section, and IEEE bibliography lines (author, vol., pp., doi — with or without `[n]` prefix).
+                **How similarity % is calculated (Turnitin-style):** only contiguous runs of **8+ matching words** count toward the document score — not the whole paragraph × fuzzy match. References and bibliography are excluded.
+
+                **Note:** This tool searches the public web via DuckDuckGo; Turnitin uses a proprietary paper database. Scores will not match exactly, but the method is now closer to Turnitin's coverage model.
                 """
             )
     elif not run_scan:

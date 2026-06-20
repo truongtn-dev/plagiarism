@@ -1,28 +1,44 @@
 from __future__ import annotations
 
-import re
-from collections import Counter
+import time
 
-from checker.extractor import ExtractedParagraph, split_sentences
+from checker.extractor import ExtractedParagraph
 from checker.models import ParagraphResult, RiskLevel, ScanReport, SourceMatch
 from checker.suggestions import build_suggestions
 from checker.text_normalize import content_word_count, strip_citations
 from checker.web_checker import (
     check_paragraph_against_web,
     check_sentence_matches,
-    compare_texts,
+    count_matching_words,
+    coverage_percent,
     detect_internal_overlap,
 )
 
 
 def _risk_level(similarity: float, has_internal: bool) -> RiskLevel:
-    if similarity >= 75 or (similarity >= 60 and has_internal):
+    if similarity >= 60 or (similarity >= 45 and has_internal):
         return RiskLevel.CRITICAL
-    if similarity >= 55:
+    if similarity >= 35:
         return RiskLevel.HIGH
-    if similarity >= 38:
+    if similarity >= 20:
         return RiskLevel.MEDIUM
     return RiskLevel.LOW
+
+
+def _paragraph_similarity(body_text: str, web_matches: list[SourceMatch], internal: list[str]) -> float:
+    """Turnitin-style: % of paragraph words in >=8-word contiguous matches."""
+    best_cov = 0.0
+    if web_matches:
+        for match in web_matches[:3]:
+            cov = coverage_percent(body_text, match.snippet)
+            best_cov = max(best_cov, cov)
+
+    if internal:
+        for chunk in internal:
+            cov = coverage_percent(body_text, chunk)
+            best_cov = max(best_cov, cov)
+
+    return round(best_cov, 1)
 
 
 def _word_count(text: str) -> int:
@@ -49,10 +65,8 @@ def analyze_document(
     total_words = sum(_word_count(p.text) for p in paragraphs if not p.skip)
     total_chars = sum(len(p.text) for p in paragraphs if not p.skip)
 
-    plagiarized_words = 0.0
+    plagiarized_words = 0
     risk_summary = {level.value: 0 for level in RiskLevel}
-
-    import time
 
     start = time.time()
 
@@ -68,26 +82,28 @@ def analyze_document(
         )
 
         internal = detect_internal_overlap(all_texts, strip_citations(para.text))
+        body_text = strip_citations(para.text)
 
-        best_sim = 0.0
-        top_match: SourceMatch | None = None
-        if web_matches:
-            best_sim = web_matches[0].similarity
-            top_match = web_matches[0]
+        best_sim = _paragraph_similarity(body_text, web_matches, internal)
+        top_match: SourceMatch | None = web_matches[0] if web_matches else None
 
         sentence_hits = []
-        if web_matches and best_sim >= 40:
-            sentence_hits = check_sentence_matches(strip_citations(para.text), web_matches)
-
-        if internal:
-            best_sim = max(best_sim, 45.0)
+        if web_matches and best_sim >= 15:
+            sentence_hits = check_sentence_matches(body_text, web_matches)
 
         risk = _risk_level(best_sim, bool(internal))
         risk_summary[risk.value] += 1
 
         words = _word_count(para.text)
-        weight = {"critical": 0.95, "high": 0.75, "medium": 0.45, "low": 0.12}[risk.value]
-        plagiarized_words += words * (best_sim / 100.0) * weight
+        matched_words = 0
+        if web_matches:
+            matched_words = max(
+                count_matching_words(body_text, m.snippet) for m in web_matches[:3]
+            )
+        if internal:
+            for chunk in internal:
+                matched_words = max(matched_words, count_matching_words(body_text, chunk))
+        plagiarized_words += matched_words
 
         suggestions = build_suggestions(
             para.text,
@@ -103,7 +119,7 @@ def analyze_document(
                 text=para.text,
                 char_count=len(para.text),
                 word_count=words,
-                similarity=round(best_sim, 1),
+                similarity=best_sim,
                 risk=risk,
                 sources=web_matches,
                 internal_duplicates=internal,
@@ -129,9 +145,9 @@ def analyze_document(
 
     results.sort(key=lambda r: r.index)
 
-    analyzed_words = sum(r.word_count for r in results if r.similarity > 0)
-    if analyzed_words > 0:
-        plagiarism_pct = min(100.0, (plagiarized_words / max(total_words, 1)) * 100)
+    # Turnitin-style: matched word runs (>=8 words) / total document words (excluding skipped).
+    if total_words > 0:
+        plagiarism_pct = min(100.0, (plagiarized_words / total_words) * 100)
     else:
         plagiarism_pct = 0.0
 

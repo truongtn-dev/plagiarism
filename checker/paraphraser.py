@@ -208,9 +208,9 @@ def paraphrase_for_similarity(
     similarity: float,
     matched_fragment: str = "",
 ) -> str:
-    if similarity >= 55:
+    if similarity >= 35:
         intensity = "medium"
-    elif similarity >= 38:
+    elif similarity >= 20:
         intensity = "light"
     else:
         return text

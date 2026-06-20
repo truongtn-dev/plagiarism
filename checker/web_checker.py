@@ -55,6 +55,45 @@ def _search_web(query: str, max_results: int = 5) -> list[dict]:
             return []
 
 
+# Turnitin-style: only contiguous runs of at least this many words count toward similarity %.
+MIN_MATCH_WORDS = 8
+
+
+def _word_tokens(text: str) -> list[str]:
+    return re.findall(r"\b\w+\b", _clean(text))
+
+
+def count_matching_words(
+    source: str,
+    target: str,
+    min_words: int = MIN_MATCH_WORDS,
+) -> int:
+    """
+    Count words in `source` that belong to contiguous runs of >= min_words
+    shared with `target` (Turnitin-style coverage, not fuzzy ratio).
+    """
+    src_words = _word_tokens(source)
+    tgt_words = _word_tokens(target)
+    if len(src_words) < min_words or len(tgt_words) < min_words:
+        return 0
+
+    sm = SequenceMatcher(None, src_words, tgt_words)
+    matched = 0
+    for block in sm.get_matching_blocks():
+        if block.size >= min_words:
+            matched += block.size
+    return matched
+
+
+def coverage_percent(source: str, target: str, min_words: int = MIN_MATCH_WORDS) -> float:
+    """Share of source words covered by >= min_words contiguous matches."""
+    src_words = _word_tokens(source)
+    if not src_words:
+        return 0.0
+    matched = count_matching_words(source, target, min_words=min_words)
+    return round(min(100.0, (matched / len(src_words)) * 100.0), 1)
+
+
 def _longest_common_substring(a: str, b: str, min_len: int = 25) -> str:
     sm = SequenceMatcher(None, a.lower(), b.lower())
     match = sm.find_longest_match(0, len(a), 0, len(b))
@@ -111,13 +150,16 @@ def check_paragraph_against_web(
             continue
 
         sim, matched = compare_texts(body_text, body)
-        if sim >= 28:
+        coverage = coverage_percent(body_text, body)
+        # Keep fuzzy score for ranking sources; use coverage for document-level %.
+        display_sim = max(sim, coverage) if count_matching_words(body_text, body) >= MIN_MATCH_WORDS else sim
+        if sim >= 28 or coverage >= 15:
             matches.append(
                 models.SourceMatch(
                     title=title[:200],
                     url=url,
                     snippet=body[:400],
-                    similarity=sim,
+                    similarity=round(display_sim, 1),
                     matched_text=matched[:300],
                 )
             )

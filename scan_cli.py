@@ -55,7 +55,7 @@ def main():
     print(f"  Duration:    {report.duration_seconds}s")
     print(f"{'='*50}\n")
 
-    flagged = [p for p in report.paragraphs if p.similarity >= 38]
+    flagged = [p for p in report.paragraphs if p.similarity >= 20]
     flagged.sort(key=lambda p: -p.similarity)
 
     print("Flagged paragraphs:")
