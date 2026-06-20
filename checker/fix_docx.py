@@ -38,6 +38,10 @@ class FixStats:
     paragraphs_failed: int = 0
     modified_indices: list[int] = field(default_factory=list)
 
+    @property
+    def excluded_count(self) -> int:
+        return self.paragraphs_skipped + self.paragraphs_failed
+
 
 def _should_rewrite(para: ParagraphResult, min_similarity: float) -> bool:
     if para.risk not in (RiskLevel.MEDIUM, RiskLevel.HIGH, RiskLevel.CRITICAL):

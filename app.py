@@ -437,12 +437,13 @@ def main():
             )
         st.session_state.fixed_docx = fixed_bytes
         st.session_state.fix_stats = stats
+        failed = getattr(stats, "paragraphs_failed", 0)
         st.success(
             f"✅ Đã sửa **{stats.paragraphs_modified}** đoạn · "
             f"Giữ nguyên **{stats.paragraphs_unchanged}** đoạn · "
-            f"Bỏ qua/lỗi **{stats.paragraphs_skipped + stats.paragraphs_failed}** đoạn"
+            f"Bỏ qua/lỗi **{stats.paragraphs_skipped + failed}** đoạn"
         )
-        if stats.paragraphs_failed:
+        if failed:
             st.warning("Một số đoạn không sửa được để bảo vệ citation Mendeley — giữ nguyên bản gốc ở các đoạn đó.")
     elif auto_fix and not st.session_state.report:
         st.warning("Hãy chạy kiểm tra đạo văn trước khi tự động sửa.")
