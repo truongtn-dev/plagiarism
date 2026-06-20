@@ -69,20 +69,51 @@ def count_matching_words(
     min_words: int = MIN_MATCH_WORDS,
 ) -> int:
     """
-    Count words in `source` that belong to contiguous runs of >= min_words
-    shared with `target` (Turnitin-style coverage, not fuzzy ratio).
+    Count words in `source` that belong to contiguous runs shared with `target`.
+    For short search snippets, the required run length is reduced automatically.
     """
     src_words = _word_tokens(source)
     tgt_words = _word_tokens(target)
-    if len(src_words) < min_words or len(tgt_words) < min_words:
+    if len(src_words) < 4 or len(tgt_words) < 4:
+        return 0
+
+    effective_min = min(min_words, len(tgt_words), len(src_words))
+    if effective_min < 4:
         return 0
 
     sm = SequenceMatcher(None, src_words, tgt_words)
     matched = 0
     for block in sm.get_matching_blocks():
-        if block.size >= min_words:
+        if block.size >= effective_min:
             matched += block.size
     return matched
+
+
+def best_fuzzy_similarity(source: str, targets: list[str]) -> float:
+    if not targets:
+        return 0.0
+    return max(compare_texts(source, t)[0] for t in targets)
+
+
+def _dedupe_results(items: list[dict]) -> list[dict]:
+    seen: set[str] = set()
+    out: list[dict] = []
+    for item in items:
+        url = item.get("href") or item.get("link") or ""
+        key = url or (item.get("title") or "")[:80]
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
+
+
+def _search_academic(query: str, max_results: int = 4) -> list[dict]:
+    academic_query = (
+        f"{query} (site:ieee.org OR site:researchgate.net OR site:semanticscholar.org "
+        f"OR site:springer.com OR site:sciencedirect.com)"
+    )
+    return _search_web(academic_query, max_results=max_results)
 
 
 def coverage_percent(source: str, target: str, min_words: int = MIN_MATCH_WORDS) -> float:
@@ -138,7 +169,9 @@ def check_paragraph_against_web(
     if len(query.split()) < 6:
         return []
 
-    results = _search_web(query, max_results=max_results)
+    general = _search_web(query, max_results=max_results)
+    academic = _search_academic(query, max_results=max(3, max_results // 2 + 1))
+    results = _dedupe_results(general + academic)
     time.sleep(delay)
 
     matches: list[models.SourceMatch] = []

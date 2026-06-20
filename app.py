@@ -55,10 +55,12 @@ def render_header():
 
 
 def render_score_cards(report):
-    cols = st.columns(4)
+    cols = st.columns(5)
+    ieee_val_cls = "gauge-plagiarism" if report.ieee_estimate_percent >= 30 else "gauge-analyzed"
     cards = [
-        ("shield", "icon-success", "gauge-originality", f"{report.originality_percent}%", "Originality"),
-        ("percent", "icon-danger", "gauge-plagiarism", f"{report.plagiarism_percent}%", "Similarity (coverage)"),
+        ("shield", "icon-success", "gauge-originality", f"{report.originality_percent}%", "Web coverage (original)"),
+        ("percent", "icon-danger", "gauge-plagiarism", f"{report.plagiarism_percent}%", "Web match (strict)"),
+        ("chart", "icon-danger" if report.ieee_estimate_percent >= 30 else "icon-accent", ieee_val_cls, f"{report.ieee_estimate_percent}%", "IEEE risk estimate"),
         ("layers", "icon-accent", "gauge-analyzed", str(report.analyzed_paragraphs), "Paragraphs scanned"),
         ("clock", "icon-purple", "gauge-time", f"{report.duration_seconds}s", "Scan duration"),
     ]
@@ -76,6 +78,23 @@ def render_score_cards(report):
                 """,
                 unsafe_allow_html=True,
             )
+
+
+def render_ieee_compliance(report):
+    if report.ieee_estimate_percent >= 30:
+        st.error(
+            f"**IEEE compliance:** Estimated similarity **{report.ieee_estimate_percent}%** exceeds the "
+            f"**30% threshold** used by iThenticate/Turnitin for IEEE Xplore. "
+            f"{report.ieee_compliance_note}"
+        )
+    elif report.plagiarism_percent < 15 and report.ieee_estimate_percent >= 20:
+        st.warning(
+            f"**Score gap detected:** Web strict match is only **{report.plagiarism_percent}%**, but IEEE risk "
+            f"estimate is **{report.ieee_estimate_percent}%**. IEEE checks academic databases this tool cannot "
+            f"fully access. {report.ieee_compliance_note}"
+        )
+    else:
+        st.info(report.ieee_compliance_note)
 
 
 def render_risk_summary(report):
@@ -117,7 +136,8 @@ def render_paragraph(p: "ParagraphResult", show_all: bool = False):
                 <strong>Paragraph #{p.index}</strong>
                 <span>{html.escape(p.section)}</span>
                 <span>{p.word_count} words</span>
-                <span style="color:{sim_color}; font-weight:600;">{p.similarity}% match</span>
+                <span style="color:{sim_color}; font-weight:600;">{p.similarity}% risk</span>
+                <span>cov {p.coverage_percent:.1f}% · fuzzy {p.fuzzy_similarity:.1f}%</span>
                 {risk_badge(p.risk)}
             </div>
         </div>
@@ -166,6 +186,8 @@ def export_report_json(report) -> bytes:
         "filename": report.filename,
         "plagiarism_percent": report.plagiarism_percent,
         "originality_percent": report.originality_percent,
+        "ieee_estimate_percent": report.ieee_estimate_percent,
+        "ieee_compliance_note": report.ieee_compliance_note,
         "analyzed_paragraphs": report.analyzed_paragraphs,
         "duration_seconds": report.duration_seconds,
         "risk_summary": report.risk_summary,
@@ -174,6 +196,8 @@ def export_report_json(report) -> bytes:
                 "index": p.index,
                 "section": p.section,
                 "similarity": p.similarity,
+                "coverage_percent": p.coverage_percent,
+                "fuzzy_similarity": p.fuzzy_similarity,
                 "risk": p.risk.value,
                 "text_preview": p.text[:300],
                 "suggestions": p.suggestions,
@@ -335,6 +359,7 @@ def main():
     report = st.session_state.report
     if report:
         render_score_cards(report)
+        render_ieee_compliance(report)
         st.markdown("---")
         render_risk_summary(report)
 
@@ -401,16 +426,20 @@ def main():
         with st.expander("How to read results"):
             st.markdown(
                 """
+                **Two scores — read both:**
+                - **Web match (strict):** contiguous word overlap found on the public web (lower bound; your 3.8% case).
+                - **IEEE risk estimate:** fuzzy overlap with web + academic sources (IEEE, ResearchGate, Semantic Scholar) — closer to what iThenticate may report.
+
+                IEEE conferences typically reject papers above **30% similarity** in iThenticate/Turnitin. This tool **cannot access IEEE Xplore's private database**, so always use the official report from the conference chair as the final reference.
+
                 | Level | Meaning | Action |
                 |-------|---------|--------|
-                | **Safe** (< 20%) | Common terminology or original phrasing | Keep; verify citations |
-                | **Review** (20–34%) | Similar phrases on public web | Light paraphrase; check citations |
-                | **High** (35–59%) | Likely substantial overlap | Rewrite paragraph; add IEEE citation |
-                | **Critical** (≥ 60%) | Strong match with web sources | Full paraphrase required |
+                | **Safe** | Low overlap on web/academic sources | Keep; verify citations |
+                | **Review** | Phrases found on public web | Light paraphrase; check citations |
+                | **High** | Substantial overlap likely | Rewrite paragraph; add IEEE citation |
+                | **Critical** | Strong match with sources | Full paraphrase required |
 
-                **How similarity % is calculated (Turnitin-style):** only contiguous runs of **8+ matching words** count toward the document score — not the whole paragraph × fuzzy match. References and bibliography are excluded.
-
-                **Note:** This tool searches the public web via DuckDuckGo; Turnitin uses a proprietary paper database. Scores will not match exactly, but the method is now closer to Turnitin's coverage model.
+                **Excluded from matching:** inline citations `[1]`, `[2,3]`, **References** section, and IEEE bibliography lines.
                 """
             )
     elif not run_scan:

@@ -83,13 +83,19 @@ def export_report_docx(report: ScanReport, min_risk: str = "medium+") -> bytes:
     _add_label_value(doc, "Thời lượng", f"{report.duration_seconds}s")
     _add_label_value(
         doc,
-        "Đạo văn ước tính",
+        "Web match (strict)",
         f"{report.plagiarism_percent}%",
         RGBColor(0xDC, 0x26, 0x26),
     )
     _add_label_value(
         doc,
-        "Độ nguyên bản",
+        "IEEE risk estimate",
+        f"{report.ieee_estimate_percent}%",
+        RGBColor(0xDC, 0x26, 0x26) if report.ieee_estimate_percent >= 30 else RGBColor(0xF5, 0x9E, 0x0B),
+    )
+    _add_label_value(
+        doc,
+        "Độ nguyên bản (web)",
         f"{report.originality_percent}%",
         RGBColor(0x22, 0xC5, 0x5E),
     )

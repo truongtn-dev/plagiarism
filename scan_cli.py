@@ -49,10 +49,14 @@ def main():
     print()
 
     print(f"\n{'='*50}")
-    print(f"  Plagiarism:  {report.plagiarism_percent}%")
-    print(f"  Originality: {report.originality_percent}%")
-    print(f"  Analyzed:    {report.analyzed_paragraphs} paragraphs")
-    print(f"  Duration:    {report.duration_seconds}s")
+    print(f"  Web match (strict):   {report.plagiarism_percent}%")
+    print(f"  IEEE risk estimate:   {report.ieee_estimate_percent}%")
+    print(f"  Originality (web):    {report.originality_percent}%")
+    print(f"  Analyzed:             {report.analyzed_paragraphs} paragraphs")
+    print(f"  Duration:             {report.duration_seconds}s")
+    if report.ieee_estimate_percent >= 30:
+        print(f"\n  ⚠ IEEE threshold (30%) may be exceeded — revise before EDAS upload.")
+    print(f"  Note: {report.ieee_compliance_note}")
     print(f"{'='*50}\n")
 
     flagged = [p for p in report.paragraphs if p.similarity >= 20]

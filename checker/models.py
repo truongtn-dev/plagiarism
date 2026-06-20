@@ -32,6 +32,8 @@ class ParagraphResult:
     internal_duplicates: list[str] = field(default_factory=list)
     suggestions: list[str] = field(default_factory=list)
     section: str = ""
+    coverage_percent: float = 0.0
+    fuzzy_similarity: float = 0.0
 
 
 @dataclass
@@ -47,3 +49,5 @@ class ScanReport:
     paragraphs: list[ParagraphResult] = field(default_factory=list)
     scan_mode: str = "standard"
     duration_seconds: float = 0.0
+    ieee_estimate_percent: float = 0.0
+    ieee_compliance_note: str = ""
