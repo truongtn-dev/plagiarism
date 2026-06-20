@@ -254,8 +254,7 @@ def main():
 
         st.markdown("---")
         st.caption(
-            "Matches against public web sources (DuckDuckGo). Results are indicative — "
-            "use Turnitin or iThenticate before IEEE submission."
+          "Kiểm tra đạo văn toàn diện cho bài báo khoa học"
         )
         st.caption(f"© {COPYRIGHT}")
 

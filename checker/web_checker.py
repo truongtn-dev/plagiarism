@@ -7,6 +7,7 @@ from difflib import SequenceMatcher
 from ddgs import DDGS
 from rapidfuzz import fuzz
 
+from checker.models import SourceMatch
 from checker.text_normalize import content_word_count, strip_citations
 
 
